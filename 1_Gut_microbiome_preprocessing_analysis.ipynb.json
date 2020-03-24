@@ -1,0 +1,626 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# This notebook performs gut microbiome data preprocessing, calculation of alpha diversity and beta-diversity measures for each MrOS participant, and also performs spearman correlation shown in Fig.4D (Bray-Curtis uniqueness vs Bacteroides)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Loading required package: permute\n",
+      "Loading required package: lattice\n",
+      "This is vegan 2.5-6\n"
+     ]
+    }
+   ],
+   "source": [
+    "#load packages\n",
+    "library(phyloseq)\n",
+    "library(vegan)\n",
+    "library(ggplot2)\n",
+    "library(OneR)\n",
+    "library(plyr)\n",
+    "library(ape)\n",
+    "library(pspearman)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This section generates a phyloseq object with metadata on MrOS participants, and excludes one sample that should not be present in the dataset ('Orwoll_JF7100_JF')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[1] 946 133\n",
+      "[1] 920\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "'JF7100'"
+      ],
+      "text/latex": [
+       "'JF7100'"
+      ],
+      "text/markdown": [
+       "'JF7100'"
+      ],
+      "text/plain": [
+       "[1] \"JF7100\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[1] 12855   919\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A taxonomyTable: 5 × 7 of type chr</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>Kingdom</th><th scope=col>Phylum</th><th scope=col>Class</th><th scope=col>Order</th><th scope=col>Family</th><th scope=col>Genus</th><th scope=col>Species</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>OTU_1</th><td>k__Bacteria</td><td> p__Firmicutes    </td><td> c__Clostridia         </td><td> o__Clostridiales     </td><td> f__Lachnospiraceae    </td><td> g__Lachnospiraceae_UCG-004</td><td> s__ </td></tr>\n",
+       "\t<tr><th scope=row>OTU_2</th><td>k__Bacteria</td><td> p__Firmicutes    </td><td> c__Clostridia         </td><td> o__Clostridiales     </td><td> f__Lachnospiraceae    </td><td> g__                       </td><td> s__ </td></tr>\n",
+       "\t<tr><th scope=row>OTU_3</th><td>k__Bacteria</td><td> p__              </td><td> c__                   </td><td> o__                  </td><td> f__                   </td><td> g__                       </td><td> s__ </td></tr>\n",
+       "\t<tr><th scope=row>OTU_4</th><td>k__Bacteria</td><td> p__Proteobacteria</td><td> c__Deltaproteobacteria</td><td> o__Desulfovibrionales</td><td> f__Desulfovibrionaceae</td><td> g__Desulfovibrio          </td><td> s__ </td></tr>\n",
+       "\t<tr><th scope=row>OTU_5</th><td>k__Bacteria</td><td> p__Bacteroidetes </td><td> c__Bacteroidia        </td><td> o__Bacteroidales     </td><td> f__Prevotellaceae     </td><td> g__Prevotellaceae_UCG-001 </td><td> s__ </td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A taxonomyTable: 5 × 7 of type chr\n",
+       "\\begin{tabular}{r|lllllll}\n",
+       "  & Kingdom & Phylum & Class & Order & Family & Genus & Species\\\\\n",
+       "\\hline\n",
+       "\tOTU\\_1 & k\\_\\_Bacteria &  p\\_\\_Firmicutes     &  c\\_\\_Clostridia          &  o\\_\\_Clostridiales      &  f\\_\\_Lachnospiraceae     &  g\\_\\_Lachnospiraceae\\_UCG-004 &  s\\_\\_ \\\\\n",
+       "\tOTU\\_2 & k\\_\\_Bacteria &  p\\_\\_Firmicutes     &  c\\_\\_Clostridia          &  o\\_\\_Clostridiales      &  f\\_\\_Lachnospiraceae     &  g\\_\\_                        &  s\\_\\_ \\\\\n",
+       "\tOTU\\_3 & k\\_\\_Bacteria &  p\\_\\_               &  c\\_\\_                    &  o\\_\\_                   &  f\\_\\_                    &  g\\_\\_                        &  s\\_\\_ \\\\\n",
+       "\tOTU\\_4 & k\\_\\_Bacteria &  p\\_\\_Proteobacteria &  c\\_\\_Deltaproteobacteria &  o\\_\\_Desulfovibrionales &  f\\_\\_Desulfovibrionaceae &  g\\_\\_Desulfovibrio           &  s\\_\\_ \\\\\n",
+       "\tOTU\\_5 & k\\_\\_Bacteria &  p\\_\\_Bacteroidetes  &  c\\_\\_Bacteroidia         &  o\\_\\_Bacteroidales      &  f\\_\\_Prevotellaceae      &  g\\_\\_Prevotellaceae\\_UCG-001  &  s\\_\\_ \\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A taxonomyTable: 5 × 7 of type chr\n",
+       "\n",
+       "| <!--/--> | Kingdom | Phylum | Class | Order | Family | Genus | Species |\n",
+       "|---|---|---|---|---|---|---|---|\n",
+       "| OTU_1 | k__Bacteria |  p__Firmicutes     |  c__Clostridia          |  o__Clostridiales      |  f__Lachnospiraceae     |  g__Lachnospiraceae_UCG-004 |  s__  |\n",
+       "| OTU_2 | k__Bacteria |  p__Firmicutes     |  c__Clostridia          |  o__Clostridiales      |  f__Lachnospiraceae     |  g__                        |  s__  |\n",
+       "| OTU_3 | k__Bacteria |  p__               |  c__                    |  o__                   |  f__                    |  g__                        |  s__  |\n",
+       "| OTU_4 | k__Bacteria |  p__Proteobacteria |  c__Deltaproteobacteria |  o__Desulfovibrionales |  f__Desulfovibrionaceae |  g__Desulfovibrio           |  s__  |\n",
+       "| OTU_5 | k__Bacteria |  p__Bacteroidetes  |  c__Bacteroidia         |  o__Bacteroidales      |  f__Prevotellaceae      |  g__Prevotellaceae_UCG-001  |  s__  |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "      Kingdom     Phylum             Class                  \n",
+       "OTU_1 k__Bacteria  p__Firmicutes      c__Clostridia         \n",
+       "OTU_2 k__Bacteria  p__Firmicutes      c__Clostridia         \n",
+       "OTU_3 k__Bacteria  p__                c__                   \n",
+       "OTU_4 k__Bacteria  p__Proteobacteria  c__Deltaproteobacteria\n",
+       "OTU_5 k__Bacteria  p__Bacteroidetes   c__Bacteroidia        \n",
+       "      Order                  Family                 \n",
+       "OTU_1  o__Clostridiales       f__Lachnospiraceae    \n",
+       "OTU_2  o__Clostridiales       f__Lachnospiraceae    \n",
+       "OTU_3  o__                    f__                   \n",
+       "OTU_4  o__Desulfovibrionales  f__Desulfovibrionaceae\n",
+       "OTU_5  o__Bacteroidales       f__Prevotellaceae     \n",
+       "      Genus                       Species\n",
+       "OTU_1  g__Lachnospiraceae_UCG-004  s__   \n",
+       "OTU_2  g__                         s__   \n",
+       "OTU_3  g__                         s__   \n",
+       "OTU_4  g__Desulfovibrio            s__   \n",
+       "OTU_5  g__Prevotellaceae_UCG-001   s__   "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Import phyloseq object containing OTU table, taxonomy table, and phylogenetic tree\n",
+    "vars<-readRDS('DADA_Silva_NewIds_combined.rda')\n",
+    "#Add metadata to object file\n",
+    "sample <- read.csv(\"mros_v4_microbiome_subjects.csv\", row.names=1)\n",
+    "print (dim(sample))\n",
+    "names <-sample_names(vars)\n",
+    "print (length(names))\n",
+    "#sample <-sample[names, ]\n",
+    "SAM <- sample_data(sample, errorIfNULL = T)\n",
+    "vars_new <- merge_phyloseq(vars, SAM)\n",
+    "#make sure there is the right no. of participants\n",
+    "  #Check whether participant Orwoll_JF7100_JF was removed by adding metadata to phyloseq object,\n",
+    "setdiff(sample_names(vars),sample_names(vars_new))\n",
+    "print (dim(otu_table(vars_new)))\n",
+    "#Change OTU names from sequences to numbers for ease of analysis\n",
+    "taxa_names(vars_new) <- paste0(\"OTU_\", seq(ntaxa(vars_new)))\n",
+    "# Print first 5 rows to confirm renaming\n",
+    "tax_table(vars_new)[0:5]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This section assesses number of reads for rarefaction. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "9424"
+      ],
+      "text/latex": [
+       "9424"
+      ],
+      "text/markdown": [
+       "9424"
+      ],
+      "text/plain": [
+       "[1] 9424"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "5429"
+      ],
+      "text/latex": [
+       "5429"
+      ],
+      "text/markdown": [
+       "5429"
+      ],
+      "text/plain": [
+       "[1] 5429"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "0"
+      ],
+      "text/latex": [
+       "0"
+      ],
+      "text/markdown": [
+       "0"
+      ],
+      "text/plain": [
+       "[1] 0"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "12"
+      ],
+      "text/latex": [
+       "12"
+      ],
+      "text/markdown": [
+       "12"
+      ],
+      "text/plain": [
+       "[1] 12"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Subset discovery and validation cohorts\n",
+    "discovery_df<-subset_samples(vars_new,firstcohort==1,trimOTUs = TRUE)\n",
+    "validation_df<-subset_samples(vars_new,firstcohort==0,trimOTUs = TRUE)\n",
+    "#Get min of counts for discovery and validation\n",
+    "min(sample_sums(discovery_df))\n",
+    "min(sample_sums(validation_df))\n",
+    "#how many participants fall below the specified threshold (minimum number of reads in the discovery cohort was used as the threshold))\n",
+    "counts<-c(sample_sums(discovery_df))\n",
+    "counts_validation<-sample_sums(validation_df)\n",
+    "length(which(counts<9424))\n",
+    "length(which(counts_validation<9424))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "`set.seed(123)` was used to initialize repeatable random subsampling.\n",
+      "Please record this for your records so others can reproduce.\n",
+      "Try `set.seed(123); .Random.seed` for the full vector\n",
+      "...\n",
+      "12 samples removedbecause they contained fewer reads than `sample.size`.\n",
+      "Up to first five removed samples are: \n",
+      "\n",
+      "RN0259RN0268RN0301RN0336YA1770\n",
+      "...\n",
+      "1352OTUs were removed because they are no longer \n",
+      "present in any sample after random subsampling\n",
+      "\n",
+      "...\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[1]   907 11503\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "5429"
+      ],
+      "text/latex": [
+       "5429"
+      ],
+      "text/markdown": [
+       "5429"
+      ],
+      "text/plain": [
+       "[1] 5429"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "9424"
+      ],
+      "text/latex": [
+       "9424"
+      ],
+      "text/markdown": [
+       "9424"
+      ],
+      "text/plain": [
+       "[1] 9424"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/plain": [
+       "phyloseq-class experiment-level object\n",
+       "otu_table()   OTU Table:         [ 11503 taxa and 907 samples ]\n",
+       "sample_data() Sample Data:       [ 907 samples by 133 sample variables ]\n",
+       "tax_table()   Taxonomy Table:    [ 11503 taxa by 7 taxonomic ranks ]\n",
+       "phy_tree()    Phylogenetic Tree: [ 11503 tips and 11502 internal nodes ]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Generate a rarefied OTU table without replacement\n",
+    "rarefied_alpha=rarefy_even_depth(vars_new, sample.size = 9424,\n",
+    "  rngseed = 123, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)\n",
+    "# Extract abundance matrix from the phyloseq object\n",
+    "OTU_rarefied = as(otu_table(rarefied_alpha), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(rarefied_alpha)){OTU_rarefied <- t(OTU_rarefied)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_rarefied_df = as.data.frame(OTU_rarefied)\n",
+    "print (dim(OTU_rarefied_df))\n",
+    "#Remove otus with no assigned phylum\n",
+    "rarefied_alpha = subset_taxa(rarefied_alpha, !Phylum %in% c(NA))\n",
+    "#Calculate alpha diversity metrics\n",
+    "richness <- estimate_richness(rarefied_alpha, measures=c(\"Observed\", \"Shannon\"))\n",
+    "#check the minimum no. of samples in original phyloseq and in rarefied otu table after removing na\n",
+    "min(sample_sums(vars_new))\n",
+    "min(sample_sums(rarefied_alpha))\n",
+    "#check sample size post rarefaction\n",
+    "rarefied_alpha"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Collapse OTUs into genera\n",
+    "rarefied_genus<- tax_glom(rarefied_alpha, \"Genus\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This section takes the rarefied genus table and calculates a uniqueness score for each participant. Calculating a Weighted UniFrac dissimilarity matrix is computationally intensive, so this cell will take some time to run."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>907</li>\n",
+       "\t<li>907</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 907\n",
+       "\\item 907\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 907\n",
+       "2. 907\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 907 907"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>907</li>\n",
+       "\t<li>907</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 907\n",
+       "\\item 907\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 907\n",
+       "2. 907\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 907 907"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Calculate minimum dissimiliarity for discovery/validation cohorts\n",
+    "set.seed(321)\n",
+    "#calculate Weighted UniFrac\n",
+    "d <- phyloseq::distance(rarefied_genus, method=\"wunifrac\", type=\"samples\")\n",
+    "#calculate Bray-Curtis\n",
+    "d_bray <- phyloseq::distance(rarefied_genus, method=\"bray\", type=\"samples\")\n",
+    "#Obtain the uniqueness score (minimum dissimiliarity)\n",
+    "w<-as.matrix(d)\n",
+    "w<-as.data.frame(w)\n",
+    "dim(w)\n",
+    "#replace 0 (each sample compared to itself will have perfect similiarity) with NA so the next line of code can omit 0 when extracting the minium value across each row\n",
+    "w[w==0]<-NA\n",
+    "min<-sapply(w,min,na.rm=TRUE)\n",
+    "#plot minimum bray-curtis\n",
+    "b<-as.matrix(d_bray)\n",
+    "b<-as.data.frame(b)\n",
+    "dim(b)\n",
+    "b[b==0]<-NA\n",
+    "min_bray<-sapply(b,min,na.rm=TRUE)\n",
+    "#add alpha and beta-diversity metrics to the Phyloseq object metadata\n",
+    "sample_data(rarefied_genus)$min_bray<-min_bray\n",
+    "sample_data(rarefied_genus)$min_wunifrac<-min\n",
+    "sample_data(rarefied_genus)$Shannon <-richness$Shannon\n",
+    "sample_data(rarefied_genus)$Observed <-richness$Observed"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below we calculate the relative abundance of Bacteroides and Prevotella for PCoA plots shown in Figure 4B-C. This cell also saves the data as a csv file for downstream statistical analysis."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#calculate relative abundance of bacteroides + Prevotella\n",
+    "GPr = transform_sample_counts(rarefied_genus, function(x) x/9424)\n",
+    "OTU_df = as(otu_table(GPr), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(GPr)){OTU_df <- t(OTU_df)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_df = as.data.frame(OTU_df)\n",
+    "bacteroides<-OTU_df$OTU_522\n",
+    "prevotella <- OTU_df$OTU_9136\n",
+    "lachnoclostridium<-OTU_df$OTU_1336\n",
+    "Ruminococcaceae_UBA1819<-OTU_df$OTU_4026                              \n",
+    "sample_data(rarefied_genus)$bacteroides<-bacteroides\n",
+    "sample_data(rarefied_genus)$prevotella<-prevotella\n",
+    "sample_data(rarefied_genus)$P_B<-prevotella+bacteroides   \n",
+    "df<-as.data.frame(sample_data(rarefied_genus))\n",
+    "#save df for statistical analysis in Python\n",
+    "write.csv(df,'df_uniqueness.csv')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The last cell calculates Spearman correlation between Bacteroides and Bray-Curtis Uniqueness (figure 4D)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>599</li>\n",
+       "\t<li>140</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 599\n",
+       "\\item 140\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 599\n",
+       "2. 140\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 599 140"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in spearman.test(c(df$bacteroides), c(df$min_bray)):\n",
+      "“Cannot compute exact p-values with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  c(df$bacteroides) and c(df$min_bray)\n",
+       "S = 215670210, p-value < 2.2e-16\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "       rho \n",
+       "-0.7342834 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in spearman.test(c(df$P_B), c(df$min_bray)):\n",
+      "“Cannot compute exact p-values with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  c(df$P_B) and c(df$min_bray)\n",
+       "S = 223708290, p-value < 2.2e-16\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "       rho \n",
+       "-0.7989206 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#subset the discovery cohort\n",
+    "disc_df<-df[which(df$firstcohort==1),]\n",
+    "#check sample size\n",
+    "dim(disc_df)\n",
+    "#test the association between bacteroides and Bray-Curtis Uniqueness (Fig.4D)\n",
+    "spearman.test(c(df$bacteroides),c(df$min_bray))\n",
+    "#test the association between (bacteroides+Prevotella) and Bray-Curtis Uniqueness (Figure S1A)\n",
+    "spearman.test(c(df$P_B),c(df$min_bray))"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "arivale-r - R",
+   "language": "R",
+   "name": "conda-env-arivale-r-r"
+  },
+  "language_info": {
+   "codemirror_mode": "r",
+   "file_extension": ".r",
+   "mimetype": "text/x-r-source",
+   "name": "R",
+   "pygments_lexer": "r",
+   "version": "3.6.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
