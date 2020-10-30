@@ -1,0 +1,721 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Loading required package: permute\n",
+      "Loading required package: lattice\n",
+      "This is vegan 2.5-6\n",
+      "\n",
+      "Attaching package: ‘dplyr’\n",
+      "\n",
+      "The following objects are masked from ‘package:plyr’:\n",
+      "\n",
+      "    arrange, count, desc, failwith, id, mutate, rename, summarise,\n",
+      "    summarize\n",
+      "\n",
+      "The following objects are masked from ‘package:stats’:\n",
+      "\n",
+      "    filter, lag\n",
+      "\n",
+      "The following objects are masked from ‘package:base’:\n",
+      "\n",
+      "    intersect, setdiff, setequal, union\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "#Import packages\n",
+    "library(phyloseq)\n",
+    "library(vegan)\n",
+    "library(ggplot2)\n",
+    "library(pspearman)\n",
+    "library(OneR)\n",
+    "library(plyr)\n",
+    "library(dplyr)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "phyloseq-class experiment-level object\n",
+       "otu_table()   OTU Table:         [ 89022 taxa and 2539 samples ]\n",
+       "sample_data() Sample Data:       [ 2539 samples by 26 sample variables ]\n",
+       "tax_table()   Taxonomy Table:    [ 89022 taxa by 8 taxonomic ranks ]\n",
+       "phy_tree()    Phylogenetic Tree: [ 89022 tips and 82828 internal nodes ]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/plain": [
+       "phyloseq-class experiment-level object\n",
+       "otu_table()   OTU Table:         [ 89022 taxa and 1114 samples ]\n",
+       "sample_data() Sample Data:       [ 1114 samples by 25 sample variables ]\n",
+       "tax_table()   Taxonomy Table:    [ 89022 taxa by 8 taxonomic ranks ]\n",
+       "phy_tree()    Phylogenetic Tree: [ 89022 tips and 82828 internal nodes ]"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Import phyloseq objects containing ASV table, taxonomy table, and phylogenetic tree from the two vendors\n",
+    "genotek<-readRDS('genotek_10_12_20.rds')\n",
+    "genotek\n",
+    "second_genome<-readRDS('second_genome_df_10_05_20.rds')\n",
+    "second_genome"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "21123"
+      ],
+      "text/latex": [
+       "21123"
+      ],
+      "text/markdown": [
+       "21123"
+      ],
+      "text/plain": [
+       "[1] 21123"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "25596"
+      ],
+      "text/latex": [
+       "25596"
+      ],
+      "text/markdown": [
+       "25596"
+      ],
+      "text/plain": [
+       "[1] 25596"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#minimum no. of reads per vendor\n",
+    "min(sample_sums(genotek))\n",
+    "min(sample_sums(second_genome))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "`set.seed(111)` was used to initialize repeatable random subsampling.\n",
+      "Please record this for your records so others can reproduce.\n",
+      "Try `set.seed(111); .Random.seed` for the full vector\n",
+      "...\n",
+      "37799OTUs were removed because they are no longer \n",
+      "present in any sample after random subsampling\n",
+      "\n",
+      "...\n"
+     ]
+    }
+   ],
+   "source": [
+    "#Rarefy genotek dataset to even depth\n",
+    "rarefied_genotek=rarefy_even_depth(genotek, sample.size = min(sample_sums(genotek)),\n",
+    "  rngseed = 111, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "`set.seed(111)` was used to initialize repeatable random subsampling.\n",
+      "Please record this for your records so others can reproduce.\n",
+      "Try `set.seed(111); .Random.seed` for the full vector\n",
+      "...\n",
+      "73798OTUs were removed because they are no longer \n",
+      "present in any sample after random subsampling\n",
+      "\n",
+      "...\n"
+     ]
+    }
+   ],
+   "source": [
+    "#Rarefy second genome dataset to even depth\n",
+    "rarefied_second=rarefy_even_depth(second_genome, sample.size = min(sample_sums(second_genome)),\n",
+    "  rngseed = 111, replace = FALSE, trimOTUs = TRUE, verbose = TRUE)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Calculate alpha diversity at the ASV level\n",
+    "richness_genotek <- estimate_richness(rarefied_genotek, measures=c(\"Shannon\"))\n",
+    "richness_second <- estimate_richness(rarefied_second, measures=c(\"Shannon\"))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#save rariefied phyloseq object\n",
+    "saveRDS(rarefied_genotek, \"rarefied_genotek.rds\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#save rariefied phyloseq object\n",
+    "saveRDS(rarefied_second, \"rarefied_second.rds\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Collapse ASVs into genera and save genus level phyloseq object for Vendor B\n",
+    "rarefied_second_genus<-tax_glom(rarefied_second,\"Genus\")\n",
+    "saveRDS(rarefied_second_genus, \"rarefied_second_genus.rds\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Collapse ASVs into genera and save genus level phyloseq object for Vendor A\n",
+    "rarefied_genotek_genus<-tax_glom(rarefied_genotek,\"Genus\")\n",
+    "saveRDS(rarefied_genotek_genus, \"rarefied_genotek_genus.rds\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Calculate alpha diversity at the genus level for both vendors\n",
+    "richness_genotek_genus <- estimate_richness(rarefied_genotek_genus, measures=c(\"Shannon\"))\n",
+    "richness_second_genus <- estimate_richness(rarefied_second_genus, measures=c(\"Shannon\"))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>2539</li>\n",
+       "\t<li>2539</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 2539\n",
+       "\\item 2539\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 2539\n",
+       "2. 2539\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 2539 2539"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Calculate uniqueness using Bray-Curtis at the genus level\n",
+    "d_bray_g <- phyloseq::distance(rarefied_genotek_genus, method=\"bray\", type=\"samples\")\n",
+    "w<-as.matrix(d_bray_g)\n",
+    "w<-as.data.frame(w)\n",
+    "#check dimensions\n",
+    "dim(w)\n",
+    "#convert 0 (comparison of each sample with itself) to NA for downstream extraction of the minimum value\n",
+    "w[w==0]<-NA\n",
+    "#extract minimum dissimilarity value\n",
+    "min<-sapply(w,min,na.rm=TRUE)\n",
+    "#save to dataframe\n",
+    "sample_data(rarefied_genotek)$min_bray_genus<-min"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in cor.test.default(sample_data(rarefied_genotek)$min_bray_genus, :\n",
+      "“Cannot compute exact p-value with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  sample_data(rarefied_genotek)$min_bray_genus and sample_data(rarefied_genotek)$age\n",
+       "S = 2231222411, p-value < 2.2e-16\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "      rho \n",
+       "0.1820889 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#test correlation with age\n",
+    "cor.test(sample_data(rarefied_genotek)$min_bray_genus,sample_data(rarefied_genotek)$age,method='spearman')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>2539</li>\n",
+       "\t<li>2539</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 2539\n",
+       "\\item 2539\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 2539\n",
+       "2. 2539\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 2539 2539"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Calculate uniqueness using Bray-Curtis at the ASV level\n",
+    "d_bray <- phyloseq::distance(rarefied_genotek, method=\"bray\", type=\"samples\")\n",
+    "w<-as.matrix(d_bray)\n",
+    "#save dissimilarity matrix\n",
+    "write.csv(w,'bray_genotek_ASV.csv')\n",
+    "w<-as.data.frame(w)\n",
+    "#check dimensions\n",
+    "dim(w)\n",
+    "#extract minimum dissimilarity value\n",
+    "w[w==0]<-NA\n",
+    "min<-sapply(w,min,na.rm=TRUE)\n",
+    "#save to dataframe\n",
+    "sample_data(rarefied_genotek)$min_bray<-min"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in cor.test.default(sample_data(rarefied_genotek)$min_bray, sample_data(rarefied_genotek)$age, :\n",
+      "“Cannot compute exact p-value with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  sample_data(rarefied_genotek)$min_bray and sample_data(rarefied_genotek)$age\n",
+       "S = 2298908530, p-value = 1.578e-15\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "      rho \n",
+       "0.1572769 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#test ASV-level correlation with age\n",
+    "cor.test(sample_data(rarefied_genotek)$min_bray,sample_data(rarefied_genotek)$age,method='spearman')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Save phyloseq object\n",
+    "saveRDS(rarefied_genotek, \"rarefied_genotek.rds\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>1114</li>\n",
+       "\t<li>1114</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 1114\n",
+       "\\item 1114\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 1114\n",
+       "2. 1114\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 1114 1114"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Calculate uniqueness using Bray-Curtis at the ASV level for Vendor B\n",
+    "set.seed(321)\n",
+    "d_bray_second<- phyloseq::distance(rarefied_second, method=\"bray\", type=\"samples\")\n",
+    "w<-as.matrix(d_bray_second)\n",
+    "w<-as.data.frame(w)\n",
+    "#save dissimilarity matrix\n",
+    "write.csv(w,'bray_second_ASV.csv')\n",
+    "#check dimensions\n",
+    "dim(w)\n",
+    "#extract minimum dissimilarity value\n",
+    "w[w==0]<-NA\n",
+    "min<-sapply(w,min,na.rm=TRUE)\n",
+    "#add to df\n",
+    "sample_data(rarefied_second)$min_bray<-min"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in cor.test.default(sample_data(rarefied_second)$min_bray, sample_data(rarefied_second)$age, :\n",
+      "“Cannot compute exact p-value with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  sample_data(rarefied_second)$min_bray and sample_data(rarefied_second)$age\n",
+       "S = 188484518, p-value = 9.493e-10\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "      rho \n",
+       "0.1819653 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#test ASV-level correlation with age in vendor B\n",
+    "cor.test(sample_data(rarefied_second)$min_bray,sample_data(rarefied_second)$age,method='spearman')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<ol class=list-inline>\n",
+       "\t<li>1114</li>\n",
+       "\t<li>1114</li>\n",
+       "</ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 1114\n",
+       "\\item 1114\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 1114\n",
+       "2. 1114\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] 1114 1114"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#Calculate uniqueness using Bray-Curtis at the genus level for Vendor B\n",
+    "set.seed(321)\n",
+    "d_bray_second_g<- phyloseq::distance(rarefied_second_genus, method=\"bray\", type=\"samples\")\n",
+    "w<-as.matrix(d_bray_second_g)\n",
+    "w<-as.data.frame(w)\n",
+    "#save dissimilarity matrix\n",
+    "write.csv(w,'bray_second_genus.csv')\n",
+    "#check dimensions\n",
+    "dim(w)\n",
+    "#extract minimum value\n",
+    "w[w==0]<-NA\n",
+    "min<-sapply(w,min,na.rm=TRUE)\n",
+    "#save to df\n",
+    "sample_data(rarefied_second)$min_bray_genus<-min"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message in cor.test.default(sample_data(rarefied_second)$min_bray_genus, :\n",
+      "“Cannot compute exact p-value with ties”"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "\n",
+       "\tSpearman's rank correlation rho\n",
+       "\n",
+       "data:  sample_data(rarefied_second)$min_bray_genus and sample_data(rarefied_second)$age\n",
+       "S = 186868375, p-value = 2.047e-10\n",
+       "alternative hypothesis: true rho is not equal to 0\n",
+       "sample estimates:\n",
+       "      rho \n",
+       "0.1889795 \n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#test genus-level correlation with age in vendor B\n",
+    "cor.test(sample_data(rarefied_second)$min_bray_genus,sample_data(rarefied_second)$age,method='spearman')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Add genus and ASV-level alpha diversity to dataframe\n",
+    "sample_data(rarefied_second)$Shannon_genus<-richness_second_genus$Shannon\n",
+    "sample_data(rarefied_second)$Shannon<-richness_second$Shannon\n",
+    "sample_data(rarefied_genotek)$Shannon_genus<-richness_genotek_genus$Shannon\n",
+    "sample_data(rarefied_genotek)$Shannon<-richness_genotek$Shannon"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#generate age groups variable for Vendor B\n",
+    "df<-as.data.frame(sample_data(rarefied_second))\n",
+    "df$age_1[df$age<30]<-'<30'\n",
+    "df$age_1[df$age>=30 & df$age<40]<-'30-39'\n",
+    "df$age_1[df$age>=40 & df$age<50]<-'40-49'\n",
+    "df$age_1[df$age>=50 & df$age<60]<-'50-59'\n",
+    "df$age_1[df$age>=60 & df$age<70]<-'60-69'\n",
+    "df$age_1[df$age>=70 & df$age<80]<-'70-79'\n",
+    "df$age_1[df$age>=80]<-'80+'\n",
+    "#save dataframe for downstream analysis\n",
+    "write.csv(df,'second_genome_complete.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#generate age groups variable for Vendor A\n",
+    "df<-as.data.frame(sample_data(sample_data(rarefied_genotek)))\n",
+    "df$age_1[df$age<30]<-'<30'\n",
+    "df$age_1[df$age>=30 & df$age<40]<-'30-39'\n",
+    "df$age_1[df$age>=40 & df$age<50]<-'40-49'\n",
+    "df$age_1[df$age>=50 & df$age<60]<-'50-59'\n",
+    "df$age_1[df$age>=60 & df$age<70]<-'60-69'\n",
+    "df$age_1[df$age>=70 & df$age<80]<-'70-79'\n",
+    "df$age_1[df$age>=80]<-'80+'\n",
+    "#save dataframe for downstream analysis\n",
+    "write.csv(df,'genotek_complete.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#create relative abundance genus tables for uniqueness-genus correlations\n",
+    "OTU_df = as(otu_table(rarefied_genotek_genus), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(rarefied_genotek_genus)){OTU_df <- t(OTU_df)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_df = as.data.frame(OTU_df)\n",
+    "colnames(OTU_df)<-tax_table(rarefied_genotek_genus)[,6]\n",
+    "OTU_df$public_client_id<-sample_data(rarefied_genotek_genus)$public_client_id\n",
+    "write.csv(OTU_df,'genus_genotek_table.csv')\n",
+    "OTU_df = as(otu_table(rarefied_genotek_genus), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(rarefied_genotek_genus)){OTU_df <- t(OTU_df)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_df = as.data.frame(OTU_df)\n",
+    "colnames(OTU_df)<-tax_table(rarefied_genotek_genus)[,6]\n",
+    "OTU_df$public_client_id<-sample_data(rarefied_genotek_genus)$public_client_id\n",
+    "colnames(OTU_df)<-tax_table(rarefied_genotek_genus)[,2]\n",
+    "write.csv(OTU_df,'genus_phylum_genotek_table.csv')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "OTU_df = as(otu_table(rarefied_second_genus), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(rarefied_second_genus)){OTU_df <- t(OTU_df)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_df = as.data.frame(OTU_df)\n",
+    "colnames(OTU_df)<-tax_table(rarefied_second_genus)[,6]\n",
+    "OTU_df$public_client_id<-sample_data(rarefied_second_genus)$public_client_id\n",
+    "write.csv(OTU_df,'genus_second_table.csv')\n",
+    "OTU_df = as(otu_table(rarefied_second_genus), \"matrix\")\n",
+    "# transpose if necessary\n",
+    "if(taxa_are_rows(rarefied_second_genus)){OTU_df <- t(OTU_df)}\n",
+    "# Coerce to data.frame\n",
+    "OTU_df = as.data.frame(OTU_df)\n",
+    "OTU_df$public_client_id<-sample_data(rarefied_second_genus)$public_client_id\n",
+    "colnames(OTU_df)<-tax_table(rarefied_second_genus)[,2]\n",
+    "write.csv(OTU_df,'genus_phylum_second_table.csv')"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "arivale-r - R",
+   "language": "R",
+   "name": "conda-env-arivale-r-r"
+  },
+  "language_info": {
+   "codemirror_mode": "r",
+   "file_extension": ".r",
+   "mimetype": "text/x-r-source",
+   "name": "R",
+   "pygments_lexer": "r",
+   "version": "3.6.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
